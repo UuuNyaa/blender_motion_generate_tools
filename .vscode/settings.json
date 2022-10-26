@@ -1,0 +1,15 @@
+{
+    "editor.minimap.maxColumn": 99999,
+    "editor.wordWrapColumn": 99999,
+    "python.formatting.autopep8Args": [
+        "--max-line-length=9999"
+    ],
+    "workbench.colorTheme": "Default Dark+",
+    "python.languageServer": "Pylance",
+    "python.linting.pylintArgs": [
+        "--disable=C0111",
+        "--max-line-length=240",
+        "--enable=F,E",
+        "--generated-members=numpy.* ,torch.*"
+    ],
+}
