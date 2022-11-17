@@ -1,0 +1,3 @@
+[submodule "motion_generate_tools/mdm"]
+	path = motion_generate_tools/mdm
+	url = https://github.com/UuuNyaa/motion-diffusion-model.git

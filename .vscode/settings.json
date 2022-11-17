@@ -6,6 +6,9 @@
     ],
     "workbench.colorTheme": "Default Dark+",
     "python.languageServer": "Pylance",
+	"python.analysis.extraPaths": [
+        "${workspaceFolder}/motion_generate_tools/mdm",
+	],
     "python.linting.pylintArgs": [
         "--disable=C0111",
         "--max-line-length=240",
