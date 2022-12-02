@@ -11,12 +11,9 @@ import numpy as np
 import torch
 from data_loaders.humanml.utils import paramUtil
 
-from mdm.data_loaders.humanml.data.dataset import HumanML3D
-from mdm.data_loaders.humanml.scripts import motion_process
-from mdm.data_loaders.tensors import t2m_collate
 from mdm.model import cfg_sampler
 from mdm.utils import dist_util, fixseed, model_util
-from motion_utils import DATA_PATH, NumpyJSONEncoder, dotdict
+from motion_utils import DATA_PATH, HumanML3DConverter, NumpyJSONEncoder, dotdict
 
 SMPL_DATA_PATH = os.path.join(DATA_PATH, 'body_models', 'smpl')
 SMPL_MODEL_PATH = os.path.join(SMPL_DATA_PATH, 'SMPL_NEUTRAL.pkl')
@@ -27,6 +24,12 @@ DATASET_OPT_PATH = os.path.join(DATASET_PATH, 'humanml_opt.txt')
 
 
 def main():
+    HumanML3DConverter.initialize_motion_process(
+        np.load(os.path.join(DATA_PATH, 'dataset', 'joints', f'{paramUtil.t2m_tgt_skel_id}.npy')),
+        paramUtil.t2m_raw_offsets,
+        paramUtil.t2m_kinematic_chain
+    )
+
     seed = 1
     max_frames = 196
     guidance_param = 2.5
@@ -42,7 +45,17 @@ def main():
 
     dist_util.setup_dist(device)
 
-    humanml3d = HumanML3D(mode='train', base_path=DATA_PATH, split='test', num_frames=max_frames)
+    conv = HumanML3DConverter(
+        max_frames,
+        np.load(os.path.join(DATASET_PATH, 'HumanML3D', 'Mean.npy')),
+        np.load(os.path.join(DATASET_PATH, 'HumanML3D', 'Std.npy')),
+    )
+
+    motion = np.load(os.path.join(DATA_PATH, 'dataset', 'joints', '010639.npy'))[:, :22]
+    motion = conv.uniform_skeleton(motion)
+    offsets = conv.get_offsets(motion)
+    motion_origin = conv.apply_offsets(motion, offsets)
+    input_features, motion_length = conv.to_features(motion_origin)
 
     logging.info("Creating model and diffusion...")
     model = model_util.MDM(
@@ -74,36 +87,27 @@ def main():
     model.to(dist_util.dev())
     model.eval()  # disable random masking
 
-    input_motions, model_kwargs = t2m_collate([humanml3d[1]])
-    input_motions = input_motions.to(dist_util.dev())
-
     if text_condition == '':
         guidance_param = 0.  # Force unconditioned generation
 
-    lengths = model_kwargs['y']['lengths'].tolist()
-
     # add inpainting mask according to args
-    assert max_frames == input_motions.shape[-1]
+    assert max_frames == input_features.shape[-1]
     inpainting_mask = torch.ones_like(
-        input_motions,
+        input_features,
         dtype=torch.bool,
-        device=input_motions.device
+        device=input_features.device
     )  # True means use gt motion
-    for i, length in enumerate(lengths):
-        start_idx, end_idx = int(prefix_end * length), int(suffix_start * length)
-        inpainting_mask[i, :, :, start_idx: end_idx] = False  # do inpainting in those frames
+    inpainting_mask[0, :, :, int(prefix_end * motion_length): int(suffix_start * motion_length)] = False  # do inpainting in those frames
 
     logging.info('### Start sampling')
 
-    new_func(input_motions, lengths, humanml3d.t2m_dataset, 'input_frames.json')
-
-    sample = diffusion.p_sample_loop(
+    sample_features = diffusion.p_sample_loop(
         model,
         (batch_size, model.njoints, model.nfeats, max_frames),
         clip_denoised=False,
         model_kwargs={'y': {
             'text': [text_condition] * num_samples,
-            'inpainted_motion': input_motions,
+            'inpainted_motion': input_features,
             'inpainting_mask': inpainting_mask,
             'scale': torch.ones(batch_size, device=dist_util.dev()) * guidance_param,  # add CFG scale to batch
         }},
@@ -115,38 +119,22 @@ def main():
         const_noise=False,
     )
 
-    new_func(sample, lengths, humanml3d.t2m_dataset, 'sample_frames.json')
+    save_motion(conv.unapply_offsets(conv.to_motion(sample_features, motion_length), offsets), 'motion_sample.json')
+    save_motion(motion, 'motion_input.json')
 
 
-def new_func(sample, lengths, t2m_dataset, output_json_path):
-    model_data_rep = 'hml_vec'
-    # Recover XYZ *positions* from HumanML3D vector representation
-    if model_data_rep == 'hml_vec':
-        n_joints = 22 if sample.shape[1] == 263 else 21
-        sample = t2m_dataset.inv_transform(sample.cpu().permute(0, 2, 3, 1)).float()
-        sample = motion_process.recover_from_ric(sample, n_joints)
-        sample = sample.view(-1, *sample.shape[2:]).permute(0, 2, 3, 1)
-
-    dataset = 'humanml'
+def save_motion(motion: np.ndarray, output_json_path: str):
     kinematic_tree = paramUtil.t2m_kinematic_chain
     chain_names = ['leg.r', 'leg.l', 'spine', 'arm.r', 'arm.l']
 
-    output_motion: np.ndarray = sample.cpu().numpy()[0]
-    output_length = lengths[0]
-
-    logging.info("created samples")
-
-    joints = output_motion.transpose(2, 0, 1)[:output_length]
-    data = joints.copy().reshape(len(joints), -1, 3)
-
-    frame_count = data.shape[0]
+    frame_count = motion.shape[0]
 
     chain_frames = [
         {
             chain_name: list(zip(
-                data[frame, chain, 0],
-                data[frame, chain, 1],
-                data[frame, chain, 2]
+                motion[frame, chain, 0],
+                motion[frame, chain, 1],
+                motion[frame, chain, 2]
             ))
             for chain_name, chain in zip(chain_names, kinematic_tree)
         }
