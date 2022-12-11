@@ -72,6 +72,8 @@ def main():
     )
 
     diffusion = model_util.create_gaussian_diffusion(dotdict({
+        'diffusion_steps': 1000,
+        'diffusion_sampling_steps': 100,
         'noise_schedule': 'cosine',
         'sigma_small': True,
         'lambda_vel': 0.0,
@@ -119,9 +121,22 @@ def main():
         const_noise=False,
     )
 
-    save_motion(conv.unapply_offsets(conv.to_motion(sample_features, motion_length), offsets), 'motion_sample.json')
-    save_motion(motion, 'motion_input.json')
+    sample_motion = conv.unapply_offsets(conv.to_motion(sample_features, motion_length), offsets)
+    sample_quaternion_motion = conv.position_motion_to_quaternion_motion(sample_motion)
+    sample_position_quaternion_motion = np.block([sample_motion, sample_quaternion_motion])
 
+    save_motion(sample_motion, 'motion_sample.json')
+    save_as_json(sample_position_quaternion_motion, 'motion_sample_pq.json')
+
+    input_quaternion_motion = conv.position_motion_to_quaternion_motion(motion)
+    input_position_quaternion_motion = np.block([motion, input_quaternion_motion])
+    save_motion(motion, 'motion_input.json')
+    save_as_json(input_position_quaternion_motion, 'motion_input_pq.json')
+
+
+def save_as_json(array: np.ndarray, output_json_path: str):
+    with open(output_json_path, 'w', encoding='utf-8') as outfile:
+        json.dump(array.tolist(), outfile, indent=2, cls=NumpyJSONEncoder)
 
 def save_motion(motion: np.ndarray, output_json_path: str):
     kinematic_tree = paramUtil.t2m_kinematic_chain

@@ -6,6 +6,7 @@ from typing import List, Tuple
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from data_loaders.humanml.common import quaternion
 
 from mdm.data_loaders import tensors
@@ -50,10 +51,83 @@ class NumpyJSONEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
+def _sqrt_positive_part(x: torch.Tensor) -> torch.Tensor:
+    """
+    Returns torch.sqrt(torch.max(0, x))
+    but with a zero subgradient where x is 0.
+    """
+    ret = torch.zeros_like(x)
+    positive_mask = x > 0
+    ret[positive_mask] = torch.sqrt(x[positive_mask])
+    return ret
+
+
+def matrix_to_quaternion(matrix: torch.Tensor) -> torch.Tensor:
+    """
+    Convert rotations given as rotation matrices to quaternions.
+
+    Args:
+        matrix: Rotation matrices as tensor of shape (..., 3, 3).
+
+    Returns:
+        quaternions with real part first, as tensor of shape (..., 4).
+    """
+    if matrix.size(-1) != 3 or matrix.size(-2) != 3:
+        raise ValueError(f"Invalid rotation matrix shape {matrix.shape}.")
+
+    batch_dim = matrix.shape[:-2]
+    m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.unbind(
+        matrix.reshape(batch_dim + (9,)), dim=-1
+    )
+
+    q_abs = _sqrt_positive_part(
+        torch.stack(
+            [
+                1.0 + m00 + m11 + m22,
+                1.0 + m00 - m11 - m22,
+                1.0 - m00 + m11 - m22,
+                1.0 - m00 - m11 + m22,
+            ],
+            dim=-1,
+        )
+    )
+
+    # we produce the desired quaternion multiplied by each of r, i, j, k
+    quat_by_rijk = torch.stack(
+        [
+            # pyre-fixme[58]: `**` is not supported for operand types `Tensor` and
+            #  `int`.
+            torch.stack([q_abs[..., 0] ** 2, m21 - m12, m02 - m20, m10 - m01], dim=-1),
+            # pyre-fixme[58]: `**` is not supported for operand types `Tensor` and
+            #  `int`.
+            torch.stack([m21 - m12, q_abs[..., 1] ** 2, m10 + m01, m02 + m20], dim=-1),
+            # pyre-fixme[58]: `**` is not supported for operand types `Tensor` and
+            #  `int`.
+            torch.stack([m02 - m20, m10 + m01, q_abs[..., 2] ** 2, m12 + m21], dim=-1),
+            # pyre-fixme[58]: `**` is not supported for operand types `Tensor` and
+            #  `int`.
+            torch.stack([m10 - m01, m20 + m02, m21 + m12, q_abs[..., 3] ** 2], dim=-1),
+        ],
+        dim=-2,
+    )
+
+    # We floor here at 0.1 but the exact level is not important; if q_abs is small,
+    # the candidate won't be picked.
+    flr = torch.tensor(0.1).to(dtype=q_abs.dtype, device=q_abs.device)
+    quat_candidates = quat_by_rijk / (2.0 * q_abs[..., None].max(flr))
+
+    # if not for numerical problems, quat_candidates[i] should be same (up to a sign),
+    # forall i; we pick the best-conditioned one (with the largest denominator)
+
+    return quat_candidates[
+        F.one_hot(q_abs.argmax(dim=-1), num_classes=4) > 0.5, :
+    ].reshape(batch_dim + (4,))
+
+
 @dataclass
 class MotionOffsets:
-    initial_position: np.ndarray
-    initial_quaternion: np.ndarray
+    offset_position: np.ndarray
+    offset_quaternion: np.ndarray
 
 
 class HumanML3DConverter:
@@ -89,13 +163,11 @@ class HumanML3DConverter:
         """
         Uniform skeleton.
 
-        Parameters
-        ----------
-        motion : NDArray[Shape[",22,3"], Float]
+        Args:
+            motion: A joint position motion as ndarray of shape (frame, 22, 3).
 
-        Returns
-        -------
-        uniformed_motion : NDArray[Shape[",22,3"], Float]
+        Returns:
+            uniformed_motion: An uniformed joint position motion as ndarray of shape (frame, 22, 3).
         """
         return motion_process.uniform_skeleton(motion, motion_process.tgt_offsets)
 
@@ -103,13 +175,11 @@ class HumanML3DConverter:
         """
         Get offsets.
 
-        Parameters
-        ----------
-        motion : NDArray[Shape[",22,3"], Float]
+        Args:
+            motion: A joint position motion as ndarray of shape (frame, 22, 3).
 
-        Returns
-        -------
-        motion_offsets : MotionOffsets
+        Returns:
+            motion_offsets: MotionOffsets
         """
 
         # XYZ at origin
@@ -137,47 +207,41 @@ class HumanML3DConverter:
         """
         Apply offsets.
 
-        Parameters
-        ----------
-        motion: NDArray[Shape[",22,3"], Float]
-        offsets: MotionOffsets
+        Args:
+            motion: A joint position motion as ndarray of shape (frame, 22, 3).
+            offsets: MotionOffsets
 
-        Returns
-        -------
-        offseted_motion : NDArray[Shape[",22,3"], Float]
+        Returns:
+            offseted_motion: Offsetted joint position motion as ndarray of shape (frame, 22, 3).
         """
-        motion = motion - offsets.initial_position
-        motion = quaternion.qrot_np(np.ones(motion.shape[:-1] + (4,)) * offsets.initial_quaternion, motion)
+        motion = motion - offsets.offset_position
+        motion = quaternion.qrot_np(np.ones(motion.shape[:-1] + (4,)) * offsets.offset_quaternion, motion)
         return motion
 
     def unapply_offsets(self, motion: np.ndarray, offsets: MotionOffsets) -> np.ndarray:
         """
         Unapply offsets.
 
-        Parameters
-        ----------
-        motion: NDArray[Shape[",22,3"], Float]
-        offsets: MotionOffsets
+        Args:
+            motion: A joint position motion as ndarray of shape (frame, 22, 3).
+            offsets: MotionOffsets
 
-        Returns
-        -------
-        unoffseted_motion : NDArray[Shape[",22,3"], Float]
+        Returns:
+            unoffseted_motion: Unoffsetted joint position motion as ndarray of shape (frame, 22, 3).
         """
-        motion = quaternion.qrot_np(np.ones(motion.shape[:-1] + (4,)) * quaternion.qinv_np(offsets.initial_quaternion), motion)
-        motion = motion + offsets.initial_position
+        motion = quaternion.qrot_np(np.ones(motion.shape[:-1] + (4,)) * quaternion.qinv_np(offsets.offset_quaternion), motion)
+        motion = motion + offsets.offset_position
         return motion
 
     def to_features(self, motion: np.ndarray) -> Tuple[torch.Tensor, int]:
         """
-        To features.
+        Convert from joint position motion to features.
 
-        Parameters
-        ----------
-        motion: NDArray[Shape[",22,3"], Float]
+        Args:
+            motion: A joint position motion as ndarray of shape (frame, 22, 3).
 
-        Returns
-        -------
-        feature : Tensor[Shape["1,263,1,"]]
+        Returns:
+            A tuple (features, motion_length), where features as tensor of shape (1, 263, 1, frame) and motion_length as int.
         """
 
         features = motion_process.extract_features(
@@ -202,15 +266,13 @@ class HumanML3DConverter:
 
     def to_motion(self, features: torch.Tensor, motion_length: int) -> np.ndarray:
         """
-        To motion.
+        Convert from features to joint position motion.
 
-        Parameters
-        ----------
-        feature : Tensor[Shape["1,263,1,"]]
+        Args:
+            features: A features as tensor of shape (1, 263, 1, frame)
 
-        Returns
-        -------
-        motion: NDArray[Shape[",22,3"], Float]
+        Returns:
+            motion: A joint position motion as ndarray of shape (frame, 22, 3).
         """
 
         features = ((features.cpu().permute(0, 2, 3, 1)) * self.std + self.mean).float()
@@ -220,3 +282,41 @@ class HumanML3DConverter:
         motion = motion.transpose(2, 0, 1)[:motion_length]
         motion = motion.reshape(motion_length, -1, 3)
         return motion
+
+    def to_joint_rotation_motion(self, features: torch.Tensor, motion_length: int) -> np.ndarray:
+        """
+        Convert from features to joint rotation motion.
+
+        Args:
+            features: A features as tensor of shape (1, 263, 1, frame)
+
+        Returns:
+            motion: A joint rotation motion as ndarray of shape (frame, 22, 6).
+        """
+
+        features = ((features.cpu().permute(0, 2, 3, 1)) * self.std + self.mean).float()
+
+        r_rot_quat, r_pos = motion_process.recover_root_rot_pos(features)
+        r_rot_cont6d = quaternion.quaternion_to_cont6d(r_rot_quat)
+        start_indx = 1 + 2 + 1 + (motion_process.joints_num - 1) * 3
+        end_indx = start_indx + (motion_process.joints_num - 1) * 6
+        cont6d_params = features[..., start_indx:end_indx]
+        cont6d_params = torch.cat([r_rot_cont6d, cont6d_params], dim=-1)
+        cont6d_params = cont6d_params.view(-1, motion_process.joints_num, 6)
+        matrices = quaternion.cont6d_to_matrix(cont6d_params)
+        quaternions = matrix_to_quaternion(matrices)
+        return quaternions
+
+    def position_motion_to_quaternion_motion(self, motion: np.ndarray) -> np.ndarray:
+        """
+        Convert from joint position motion to joint rotation motion.
+
+        Args:
+            motion: A joint position motion as ndarray of shape (frame, 22, 3).
+
+        Returns:
+            motion: A joint quaternion motion as ndarray of shape (frame, 22, 4).
+        """
+        skel = skeleton.Skeleton(motion_process.n_raw_offsets, motion_process.kinematic_chain, 'cpu')
+        quat_params = skel.inverse_kinematics_np(motion, motion_process.face_joint_indx, smooth_forward=True)
+        return quat_params
