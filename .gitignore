@@ -1,4 +1,7 @@
-data/
+/data/
+/motion_generate_tools/data/save/clip/
+.vscode/
+.devcontainer/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

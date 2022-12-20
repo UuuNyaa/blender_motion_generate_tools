@@ -1,5 +1,7 @@
-# motion-diffusion-model
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+numpy < 1.24.0
 git+https://github.com/openai/CLIP.git
 smplx
+scipy
 chumpy
-spacy

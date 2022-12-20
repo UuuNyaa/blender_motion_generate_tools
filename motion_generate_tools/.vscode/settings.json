@@ -1,0 +1,15 @@
+{
+	"python.linting.enabled": true,
+	"python.linting.pylintEnabled": true,
+	"python.languageServer": "Pylance",
+	"python.analysis.extraPaths": [
+		"${workspaceFolder}/..",
+		"${workspaceFolder}/mdm",
+	],
+	"python.linting.pylintArgs": [
+		"--disable=C0111",
+		"--max-line-length=240",
+		"--enable=F,E",
+		"--generated-members=numpy.* ,torch.*",
+	]
+}
