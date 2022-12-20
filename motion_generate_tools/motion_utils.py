@@ -303,9 +303,42 @@ class HumanML3DConverter:
         cont6d_params = features[..., start_indx:end_indx]
         cont6d_params = torch.cat([r_rot_cont6d, cont6d_params], dim=-1)
         cont6d_params = cont6d_params.view(-1, motion_process.joints_num, 6)
-        matrices = quaternion.cont6d_to_matrix(cont6d_params)
+        matrices = quaternion.cont6d_to_matrix(cont6d_params[:motion_length])
         quaternions = matrix_to_quaternion(matrices)
-        return quaternions
+        return quaternions.numpy()
+
+    def to_pq_motion(self, features: torch.Tensor, motion_length: int, offsets: MotionOffsets) -> np.ndarray:
+        features = ((features.cpu().permute(0, 2, 3, 1)) * self.std + self.mean).float()
+        r_rot_quat, r_pos = motion_process.recover_root_rot_pos(features)
+        positions = features[..., 4:(motion_process.joints_num - 1) * 3 + 4]
+        positions = positions.view(positions.shape[:-1] + (-1, 3))
+
+        '''Add Y-axis rotation to local joints'''
+        positions = quaternion.qrot(quaternion.qinv(r_rot_quat[..., None, :]).expand(positions.shape[:-1] + (4,)), positions)
+
+        '''Add root XZ to joints'''
+        positions[..., 0] += r_pos[..., 0:1]
+        positions[..., 2] += r_pos[..., 2:3]
+
+        '''Concate root and joints'''
+        positions = torch.cat([r_pos.unsqueeze(-2), positions], dim=-2)
+        positions = positions.view(-1, motion_process.joints_num, 3)[:motion_length]
+
+        # apply offsets
+        offset_quaternion = quaternion.qinv(torch.from_numpy(offsets.offset_quaternion))
+        positions = quaternion.qrot(torch.ones(positions.shape[:-1] + (4,)) * offset_quaternion, positions)
+        positions = positions + torch.from_numpy(offsets.offset_position)
+
+        r_rot_cont6d = quaternion.quaternion_to_cont6d(quaternion.qmul(r_rot_quat, offset_quaternion.repeat(r_rot_quat.shape[:-1] + (1,))))
+        start_indx = 1 + 2 + 1 + (motion_process.joints_num - 1) * 3
+        end_indx = start_indx + (motion_process.joints_num - 1) * 6
+        cont6d = features[..., start_indx:end_indx]
+        cont6d = torch.cat([r_rot_cont6d, cont6d], dim=-1)
+        cont6d = cont6d.view(-1, motion_process.joints_num, 6)
+        matrices = quaternion.cont6d_to_matrix(cont6d)
+        quaternions = matrix_to_quaternion(matrices)[:motion_length]
+
+        return torch.cat([positions, quaternions], dim=2).numpy()
 
     def position_motion_to_quaternion_motion(self, motion: np.ndarray) -> np.ndarray:
         """

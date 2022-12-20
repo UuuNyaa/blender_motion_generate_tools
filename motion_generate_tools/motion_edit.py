@@ -40,6 +40,8 @@ def main():
     dataset = 'humanml'
     prefix_end = 0.25
     suffix_start = 0.75
+    diffusion_steps = 1000
+    diffusion_sampling_steps = 100
 
     fixseed.fixseed(seed)
 
@@ -51,8 +53,8 @@ def main():
         np.load(os.path.join(DATASET_PATH, 'HumanML3D', 'Std.npy')),
     )
 
-    motion = np.load(os.path.join(DATA_PATH, 'dataset', 'joints', '010639.npy'))[:, :22]
-    motion = conv.uniform_skeleton(motion)
+    motion = np.load(os.path.join(DATA_PATH, 'dataset', 'joints', '000021.npy'))[:, :22]
+    motion = conv.uniform_skeleton(motion) # scale 1.109527
     offsets = conv.get_offsets(motion)
     motion_origin = conv.apply_offsets(motion, offsets)
     input_features, motion_length = conv.to_features(motion_origin)
@@ -61,6 +63,7 @@ def main():
     model = model_util.MDM(
         smpl_model_path=SMPL_MODEL_PATH,
         joint_regressor_train_extra_path=JOINT_REGRESSOR_TRAIN_EXTRA_PATH,
+        device=None if torch.cuda.is_available() else 'cpu',
         **model_util.get_model_args(dotdict({
             'dataset': dataset,
             'latent_dim': 512,
@@ -72,8 +75,8 @@ def main():
     )
 
     diffusion = model_util.create_gaussian_diffusion(dotdict({
-        'diffusion_steps': 1000,
-        'diffusion_sampling_steps': 100,
+        'diffusion_steps': diffusion_steps,
+        'diffusion_sampling_steps': diffusion_sampling_steps,
         'noise_schedule': 'cosine',
         'sigma_small': True,
         'lambda_vel': 0.0,
@@ -122,8 +125,7 @@ def main():
     )
 
     sample_motion = conv.unapply_offsets(conv.to_motion(sample_features, motion_length), offsets)
-    sample_quaternion_motion = conv.position_motion_to_quaternion_motion(sample_motion)
-    sample_position_quaternion_motion = np.block([sample_motion, sample_quaternion_motion])
+    sample_position_quaternion_motion = conv.to_pq_motion(sample_features, motion_length, offsets)
 
     save_motion(sample_motion, 'motion_sample.json')
     save_as_json(sample_position_quaternion_motion, 'motion_sample_pq.json')
