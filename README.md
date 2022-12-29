@@ -64,6 +64,9 @@ This addon depends on the following datasets:
 - [SMPL: A Skinned Multi-Person Linear Model](https://smpl.is.tue.mpg.de/index.html)
   - `data/body_models/smpl`
 
+## Contribution
+We need people to test the installation and give us feedback!
+- Discord Server: https://discord.gg/zRgUkuaPWw
 
 ## License
 This code is distributed under the [GPLv3](LICENSE).
