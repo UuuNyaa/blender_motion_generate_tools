@@ -5,26 +5,46 @@ motion_generate_toolsは以下のモデルを使ってモーションを生成�
 
 - [MDM: Human Motion Diffusion Model](https://github.com/GuyTevet/motion-diffusion-model).
 
-## Installation
-
-### Download
+## Download
 Download motion_generate_tools from [the github release page](https://github.com/UuuNyaa/blender_motion_generate_tools/releases)
  - https://github.com/UuuNyaa/blender_motion_generate_tools/releases
 
-### Installing the Addon
-Only one version of the addon should be installed at a time. If you are updating the addon to a new version, the previous version must be first uninstalled.
-
+## Installation
 The easiest way to install the motion_generate_tools is to do so through directly through Blender:
 
 1. Open the Blender User Preferences menu and select the Add-ons tab (***Edit > Preferences... > Add-ons***)
-2. Click the ***Install...*** button at the top of the Add-ons menu. This will open a file menu where you can select the `mmd_tools-v0.0.0.zip` file.
+2. Click the ***Install...*** button at the top of the Add-ons menu. This will open a file menu where you can select the `motion_generate_tools-v0.0.0.zip` file.
 3. After installing the addon .zip file, Blender will filter the addons list to only show the motion_generate_tools addon. ***Click the checkbox*** next to the title to enable the addon.
-4. ***Restart Blender***. A Blender restart is maybe required to complete the installation.
+4. Click Required Python Modules: ***Update Python Modules*** button at the addon Preferences.
+    - If you have a NVIDIA GPU that supports CUDA, you can choose ***with CUDA*** button.
+5. Click CLIP Model: ***Download CLIP Model*** button at the addon Preferences.
+6. ***Restart Blender***. A Blender restart is maybe required to complete the installation.
 
-![Install video](https://github.com/UuuNyaa/blender_motion_generate_tools/wiki/images/install.gif)
+
+https://user-images.githubusercontent.com/70152495/210015009-0b190692-291d-422f-ac95-dcebbecd97b8.mp4
 
 ### Requirements
  - Blender **3.3 LTS** or later
+
+## Usage
+1. Open the [`smpl_model_20210421-bones.blend`](https://tstorage.info/pzmsa6pgryzr) file
+2. Select the ***SMPLX-neutral*** armature
+3. Goto 3D Viewport > Sidebar > Animation > ***Motion Generator*** Panel
+4. Enter a ***Text Condition***
+    ```
+    a person jumps.
+    a person throws.
+    a man is locking his hans behind his back and sweeping his legs right and left, in a dance like motion.
+    a person is walking in a counterclockwise circle.
+    ```
+5. Press ***Generate Motion*** button
+
+[![Motion Generator Tools under development](https://img.youtube.com/vi/pTkn2qWfc60/0.jpg)](https://youtu.be/pTkn2qWfc60)
+
+
+### Limitation
+- Only [SMPL armature](https://tstorage.info/pzmsa6pgryzr) is available.
+- The motion to be edited is fixed.
 
 ## Acknowledgments
 ### Source code
