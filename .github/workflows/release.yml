@@ -19,7 +19,7 @@ jobs:
         run: cp -p LICENSE motion_generate_tools/
 
       - name: Create a zip
-        run: zip -r -9 motion_generate_tools-${GITHUB_REF_NAME}.zip motion_generate_tools/ -x 'motion_generate_tools/.vscode/*'
+        run: zip -r -9 motion_generate_tools-${GITHUB_REF_NAME}.zip motion_generate_tools/
 
       - name: Create a Release
         id: create_release
