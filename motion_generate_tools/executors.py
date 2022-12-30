@@ -90,9 +90,10 @@ class CommandExecutor(FunctionExecutor):
             input_text_io = self._process.stdout
 
             buffer: bytearray
-            for buffer in iter(input_text_io.readline, b''):
-                text = buffer.decode(encoding).rstrip()
-                _invoke_callback(line_callback, text)
+            while self._process.poll() is None:
+                for buffer in iter(input_text_io.readline, b''):
+                    text = buffer.decode(encoding).rstrip()
+                    _invoke_callback(line_callback, text)
 
             input_text_io.close()
             self._exit_code = self._process.poll()
