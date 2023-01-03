@@ -21,11 +21,11 @@ def _lines_append(line: str):
 class DownloadClipModel(bpy.types.Operator):
     bl_idname = 'motion_generate_tools.download_clip_model'
     bl_label = 'Download CLIP Model'
-    bl_options = {'REGISTER'}
+    bl_options = {'REGISTER', 'INTERNAL'}
 
     @classmethod
     def poll(cls, _context):
-        return not setup_utils.is_installer_running()
+        return (not setup_utils.is_installer_running()) and setup_utils.get_required_modules()['clip']
 
     def execute(self, context):
         _LINES.clear()
@@ -37,7 +37,7 @@ class DownloadClipModel(bpy.types.Operator):
 class DeleteClipModel(bpy.types.Operator):
     bl_idname = 'motion_generate_tools.delete_clip_model'
     bl_label = 'Delete CLIP Model'
-    bl_options = {'REGISTER'}
+    bl_options = {'REGISTER', 'INTERNAL'}
 
     @classmethod
     def poll(cls, _context):
@@ -52,7 +52,7 @@ class DeleteClipModel(bpy.types.Operator):
 class UpdatePythonModulesOperator(bpy.types.Operator):
     bl_idname = 'motion_generate_tools.update_python_modules'
     bl_label = 'Update Python Modules'
-    bl_options = {'REGISTER'}
+    bl_options = {'REGISTER', 'INTERNAL'}
 
     use_gpu: bpy.props.BoolProperty(default=False)
 
@@ -74,7 +74,7 @@ class UpdatePythonModulesOperator(bpy.types.Operator):
 class UninstallPythonModulesOperator(bpy.types.Operator):
     bl_idname = 'motion_generate_tools.uninstall_python_modules'
     bl_label = 'Uninstall Python Modules'
-    bl_options = {'REGISTER'}
+    bl_options = {'REGISTER', 'INTERNAL'}
 
     @classmethod
     def poll(cls, _context):
@@ -93,7 +93,7 @@ class UninstallPythonModulesOperator(bpy.types.Operator):
 class ListPythonModulesOperator(bpy.types.Operator):
     bl_idname = 'motion_generate_tools.list_python_modules'
     bl_label = 'List Python Modules'
-    bl_options = {'REGISTER'}
+    bl_options = {'REGISTER', 'INTERNAL'}
 
     @classmethod
     def poll(cls, _context):
@@ -119,17 +119,6 @@ class MotionGenerateToolsAddonPreferences(bpy.types.AddonPreferences):
 
         col = layout.column(align=True)
         flow = col.grid_flow(align=True)
-        flow.row().label(text="CLIP Model:")
-        is_clip_model_exist = setup_utils.is_clip_model_exist()
-        if not is_clip_model_exist:
-            flow.row().label(text="Not found", icon='ERROR')
-            col.operator(DownloadClipModel.bl_idname)
-        else:
-            flow.row().label(text="OK", icon='CHECKMARK')
-            col.operator(DeleteClipModel.bl_idname)
-
-        col = layout.column(align=True)
-        flow = col.grid_flow(align=True)
         flow.row().label(text="Required Python Modules:")
         for name, is_installed in setup_utils.get_required_modules().items():
             flow.row().label(text=name, icon='CHECKMARK' if is_installed else 'ERROR')
@@ -139,6 +128,17 @@ class MotionGenerateToolsAddonPreferences(bpy.types.AddonPreferences):
         row.operator(UpdatePythonModulesOperator.bl_idname, text="with CUDA").use_gpu = True
         flow.row().operator(UninstallPythonModulesOperator.bl_idname)
         flow.row().operator(ListPythonModulesOperator.bl_idname)
+
+        col = layout.column(align=True)
+        flow = col.grid_flow(align=True)
+        flow.row().label(text="CLIP Model:")
+        is_clip_model_exist = setup_utils.is_clip_model_exist()
+        if not is_clip_model_exist:
+            flow.row().label(text="Not found", icon='ERROR')
+            col.operator(DownloadClipModel.bl_idname)
+        else:
+            flow.row().label(text="OK", icon='CHECKMARK')
+            col.operator(DeleteClipModel.bl_idname)
 
         col = layout.column(align=False)
         row = col.row(align=True)
