@@ -28,6 +28,7 @@ class FunctionExecutor:
     def __init__(self):
         self._is_running = False
         self._return_value = None
+        self._exception = None
 
     def exec_function(self, function: Callable, *args: Any, line_callback: Optional[LineCallback] = None, finally_callback: Optional[FinallyCallback] = None):
         class OutBuffer(io.StringIO):
@@ -46,12 +47,15 @@ class FunctionExecutor:
             try:
                 with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
                     self._return_value = function(*args)
+            except Exception as exception:  # pylint: disable=broad-except
+                self._exception = exception
             finally:
                 self._is_running = False
                 _invoke_callback(finally_callback, self)
 
         self._is_running = True
         self._return_value = None
+        self._exception = None
 
         thread = threading.Thread(target=_run_background)
         thread.daemon = True
@@ -64,6 +68,10 @@ class FunctionExecutor:
     @property
     def return_value(self) -> Optional[Any]:
         return self._return_value
+
+    @property
+    def exception(self) -> Exception:
+        return self._exception
 
 
 class CommandExecutor(FunctionExecutor):

@@ -144,6 +144,9 @@ class GenarateMotion(bpy.types.Operator):
 
         wm.progress_end()
 
+        if executor.exception is not None:
+            raise executor.exception
+
         self._apply_motion(context, context.active_object, executor.return_value)
 
         return {'FINISHED'}

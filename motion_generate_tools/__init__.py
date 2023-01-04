@@ -18,7 +18,7 @@
 bl_info = {
     "name": "motion_generate_tools",
     "author": "UuuNyaa",
-    "version": (0, 0, 4),
+    "version": (0, 0, 5),
     "blender": (3, 3, 0),
     "location": "View3D > Sidebar > Panel",
     "description": "Utility tools for motion generating.",
