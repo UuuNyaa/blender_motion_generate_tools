@@ -79,6 +79,9 @@ def delete_clip_model():
 
 
 def install_python_modules(use_gpu=False, line_callback: Optional[LineCallback] = None, finally_callback: Optional[FinallyCallback] = None):
+    site_packages_path = next((p for p in sys.path if p.endswith('/site-packages')), None)
+    target_option = ['--target', site_packages_path] if site_packages_path else []
+
     _get_command_executor().exec_command(
         # ensurepip
         sys.executable, '-m', 'ensurepip',
@@ -86,6 +89,7 @@ def install_python_modules(use_gpu=False, line_callback: Optional[LineCallback] 
         finally_callback=lambda e: e.exec_command(
             # force install setuptools
             sys.executable, '-m', 'pip', 'install',
+            *target_option,
             '--disable-pip-version-check',
             '--no-input',
             '--ignore-installed',
@@ -94,9 +98,10 @@ def install_python_modules(use_gpu=False, line_callback: Optional[LineCallback] 
             finally_callback=lambda e: e.exec_command(
                 # and then install depending modules
                 sys.executable, '-m', 'pip', 'install',
+                *target_option,
                 '--disable-pip-version-check',
                 '--no-input',
-                '--upgrade',
+                # '--upgrade',
                 # '--upgrade-strategy', 'only-if-needed',
                 # '--no-cache-dir',
                 '--exists-action', 'i',
