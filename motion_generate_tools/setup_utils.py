@@ -79,7 +79,7 @@ def delete_clip_model():
 
 
 def install_python_modules(use_gpu=False, line_callback: Optional[LineCallback] = None, finally_callback: Optional[FinallyCallback] = None):
-    site_packages_path = next((p for p in sys.path if p.endswith('/site-packages')), None)
+    site_packages_path = next((p for p in sys.path if p.endswith('site-packages')), None)
     target_option = ['--target', site_packages_path] if site_packages_path else []
 
     _get_command_executor().exec_command(
