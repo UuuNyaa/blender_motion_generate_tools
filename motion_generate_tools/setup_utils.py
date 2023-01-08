@@ -65,13 +65,13 @@ def is_clip_model_exist() -> bool:
     return os.path.isfile(filepaths.CLIP_MODEL_PATH)
 
 
-def download_clip_model(line_callback: Optional[LineCallback]):
+def download_clip_model(line_callback: Optional[LineCallback] = None, finally_callback: Optional[FinallyCallback] = None):
     def _run_clip_load():
         with _unverify_https_certificates():
             import clip  # pylint: disable=import-outside-toplevel
             clip.load(filepaths.CLIP_MODEL_NAME, device='cpu', jit=False, download_root=filepaths.CLIP_DATA_PATH)
 
-    _get_command_executor().exec_function(_run_clip_load, line_callback=line_callback)
+    _get_command_executor().exec_function(_run_clip_load, line_callback=line_callback, finally_callback=finally_callback)
 
 
 def delete_clip_model():

@@ -8,6 +8,7 @@ import logging
 import subprocess
 import sys
 import threading
+import traceback
 from typing import Any, Callable, Iterable, Optional
 
 FinallyCallback = Callable[['FunctionExecutor'], None]
@@ -49,6 +50,7 @@ class FunctionExecutor:
                     self._return_value = function(*args)
             except Exception as exception:  # pylint: disable=broad-except
                 self._exception = exception
+                self.write_exception(exception, line_callback=line_callback)
             finally:
                 self._is_running = False
                 _invoke_callback(finally_callback, self)
@@ -72,6 +74,14 @@ class FunctionExecutor:
     @property
     def exception(self) -> Exception:
         return self._exception
+
+    @staticmethod
+    def write_exception(exception: Exception, line_callback: Optional[LineCallback]):
+        if exception is None:
+            return
+
+        for line in (l for f in traceback.format_exception(exception) for l in f.splitlines()):
+            _invoke_callback(line_callback, line)
 
 
 class CommandExecutor(FunctionExecutor):
